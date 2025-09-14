@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Orders System</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1rem;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-connected {
+            background-color: #4CAF50;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+
+        .status-disconnected {
+            background-color: #f44336;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            padding: 30px;
+        }
+
+        .section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 25px;
+            border: 1px solid #e9ecef;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            border-bottom: 2px solid #4facfe;
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #4facfe;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(79, 172, 254, 0.4);
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        }
+
+        .btn-danger:hover {
+            box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+        }
+
+        .orders-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            background: white;
+        }
+
+        .order-item {
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+            transition: background-color 0.3s;
+            position: relative;
+        }
+
+        .order-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .order-item:last-child {
+            border-bottom: none;
+        }
+
+        .order-item.new {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+            animation: highlight 2s ease-out;
+        }
+
+        .order-item.updated {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            animation: highlight 2s ease-out;
+        }
+
+        .order-item.deleted {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            animation: highlight 2s ease-out;
+        }
+
+        @keyframes highlight {
+            0% { background-color: rgba(79, 172, 254, 0.3); }
+            100% { background-color: transparent; }
+        }
+
+        .order-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .order-id {
+            font-weight: bold;
+            color: #4facfe;
+        }
+
+        .order-status {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-pending {
+            background-color: #ffc107;
+            color: #856404;
+        }
+
+        .status-shipped {
+            background-color: #17a2b8;
+            color: white;
+        }
+
+        .status-delivered {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .order-details {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .order-details div {
+            margin-bottom: 4px;
+        }
+
+        .timestamp {
+            font-size: 0.8rem;
+            color: #999;
+            margin-top: 8px;
+        }
+
+        .activity-log {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+
+        .log-timestamp {
+            color: #3498db;
+        }
+
+        .log-operation {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+                gap: 20px;
+                padding: 20px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Real-time Orders System</h1>
+            <p>
+                <span class="status-indicator status-disconnected" id="connectionStatus"></span>
+                <span id="connectionText">Connecting...</span>
+            </p>
+        </div>
+
+        <div class="main-content">
+            <div class="section">
+                <h2>Manage Orders</h2>
+                
+                <div class="form-group">
+                    <label for="customerName">Customer Name:</label>
+                    <input type="text" id="customerName" placeholder="Enter customer name">
+                </div>
+
+                <div class="form-group">
+                    <label for="productName">Product Name:</label>
+                    <input type="text" id="productName" placeholder="Enter product name">
+                </div>
+
+                <div class="form-group">
+                    <label for="status">Status:</label>
+                    <select id="status">
+                        <option value="pending">Pending</option>
+                        <option value="shipped">Shipped</option>
+                        <option value="delivered">Delivered</option>
+                    </select>
+                </div>
+
+                <button class="btn" onclick="createOrder()">Create Order</button>
+                <button class="btn" onclick="updateRandomOrder()">Update Random Order</button>
+                <button class="btn btn-danger" onclick="deleteRandomOrder()">Delete Random Order</button>
+            </div>
+
+            <div class="section">
+                <h2>Live Orders</h2>
+                <div class="orders-container" id="ordersContainer">
+                    <div style="text-align: center; padding: 20px; color: #666;">
+                        Loading orders...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section" style="margin: 0 30px 30px;">
+            <h2>Activity Log</h2>
+            <div class="activity-log" id="activityLog">
+                <div class="log-entry">
+                    <span class="log-timestamp">[System]</span> Waiting for activity...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let orders = [];
+        let currentOrderId = null;
+
+        // Connection status handling
+        socket.on('connect', () => {
+            document.getElementById('connectionStatus').className = 'status-indicator status-connected';
+            document.getElementById('connectionText').textContent = 'Connected';
+            addLogEntry('Connected to server');
+        });
+
+        socket.on('disconnect', () => {
+            document.getElementById('connectionStatus').className = 'status-indicator status-disconnected';
+            document.getElementById('connectionText').textContent = 'Disconnected';
+            addLogEntry('Disconnected from server');
+        });
+
+        // Handle real-time order updates
+        socket.on('orderUpdate', (data) => {
+            addLogEntry(`Database ${data.operation}: Order #${data.id}`);
+            
+            if (data.operation === 'INSERT') {
+                orders.unshift(data.data);
+                highlightOrder(data.data._id || data.data.id, 'new');
+            } else if (data.operation === 'UPDATE') {
+                const index = orders.findIndex(order => (order._id || order.id) === data.id);
+                if (index !== -1) {
+                    orders[index] = data.data;
+                    highlightOrder(data.data._id || data.data.id, 'updated');
+                }
+            } else if (data.operation === 'DELETE') {
+                const index = orders.findIndex(order => (order._id || order.id) === data.id);
+                if (index !== -1) {
+                    highlightOrder(data.data._id || data.data.id, 'deleted');
+                    setTimeout(() => {
+                        orders.splice(index, 1);
+                        renderOrders();
+                    }, 2000);
+                }
+            }
+            
+            renderOrders();
+        });
+
+        // Load initial orders
+        async function loadOrders() {
+            try {
+                const response = await fetch('/api/orders');
+                orders = await response.json();
+                renderOrders();
+                addLogEntry(`Loaded ${orders.length} orders`);
+            } catch (error) {
+                console.error('Error loading orders:', error);
+                addLogEntry('Error loading orders');
+            }
+        }
+
+        // Render orders
+        function renderOrders() {
+            const container = document.getElementById('ordersContainer');
+            
+            if (orders.length === 0) {
+                container.innerHTML = '<div style="text-align: center; padding: 20px; color: #666;">No orders found</div>';
+                return;
+            }
+
+            container.innerHTML = orders.map(order => {
+                const orderId = order._id || order.id;
+                return `
+                <div class="order-item" id="order-${orderId}">
+                    <div class="order-header">
+                        <span class="order-id">Order #${orderId}</span>
+                        <span class="order-status status-${order.status}">${order.status}</span>
+                    </div>
+                    <div class="order-details">
+                        <div><strong>Customer:</strong> ${order.customer_name}</div>
+                        <div><strong>Product:</strong> ${order.product_name}</div>
+                        <div class="timestamp">Updated: ${new Date(order.updated_at).toLocaleString()}</div>
+                    </div>
+                </div>
+            `;
+            }).join('');
+        }
+
+        // Highlight order changes
+        function highlightOrder(orderId, type) {
+            const element = document.getElementById(`order-${orderId}`);
+            if (element) {
+                element.className = `order-item ${type}`;
+                setTimeout(() => {
+                    element.className = 'order-item';
+                }, 3000);
+            }
+        }
+
+        // Create new order
+        async function createOrder() {
+            const customerName = document.getElementById('customerName').value.trim();
+            const productName = document.getElementById('productName').value.trim();
+            const status = document.getElementById('status').value;
+
+            if (!customerName || !productName) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        customer_name: customerName,
+                        product_name: productName,
+                        status: status
+                    })
+                });
+
+                if (response.ok) {
+                    document.getElementById('customerName').value = '';
+                    document.getElementById('productName').value = '';
+                    addLogEntry(`Created new order: ${customerName} - ${productName}`);
+                } else {
+                    throw new Error('Failed to create order');
+                }
+            } catch (error) {
+                console.error('Error creating order:', error);
+                alert('Error creating order');
+            }
+        }
+
+        // Update random order
+        async function updateRandomOrder() {
+            if (orders.length === 0) {
+                alert('No orders to update');
+                return;
+            }
+
+            const randomOrder = orders[Math.floor(Math.random() * orders.length)];
+            const statuses = ['pending', 'shipped', 'delivered'];
+            const newStatus = statuses[Math.floor(Math.random() * statuses.length)];
+
+            try {
+                const orderId = randomOrder._id || randomOrder.id;
+                const response = await fetch(`/api/orders/${orderId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        status: newStatus
+                    })
+                });
+
+                if (response.ok) {
+                    addLogEntry(`Updated order #${orderId} status to ${newStatus}`);
+                } else {
+                    throw new Error('Failed to update order');
+                }
+            } catch (error) {
+                console.error('Error updating order:', error);
+                alert('Error updating order');
+            }
+        }
+
+        // Delete random order
+        async function deleteRandomOrder() {
+            if (orders.length === 0) {
+                alert('No orders to delete');
+                return;
+            }
+
+            const randomOrder = orders[Math.floor(Math.random() * orders.length)];
+            const orderId = randomOrder._id || randomOrder.id;
+            
+            if (!confirm(`Are you sure you want to delete order #${orderId} (${randomOrder.customer_name} - ${randomOrder.product_name})?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/orders/${orderId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    addLogEntry(`Deleted order #${orderId}`);
+                } else {
+                    throw new Error('Failed to delete order');
+                }
+            } catch (error) {
+                console.error('Error deleting order:', error);
+                alert('Error deleting order');
+            }
+        }
+
+        // Add log entry
+        function addLogEntry(message) {
+            const log = document.getElementById('activityLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> ${message}`;
+            
+            log.insertBefore(entry, log.firstChild);
+            
+            // Keep only last 50 entries
+            while (log.children.length > 50) {
+                log.removeChild(log.lastChild);
+            }
+        }
+
+        // Initialize
+        loadOrders();
+    </script>
+</body>
+</html>
